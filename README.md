@@ -31,6 +31,9 @@ per line — so a phone and a desktop SSHClient can chat with each other.
 - **Host keys are pinned on first use.** SSH.NET accepted any host key silently;
   sshj requires a verifier, and a phone hops between untrusted networks. A
   changed fingerprint aborts the connection and says what changed.
+- **The full BouncyCastle provider replaces Android's.** The platform preloads a
+  stripped BC under the same name that omits X25519, which fails the handshake
+  against any current OpenSSH. See `ssh/Crypto.kt`.
 - **Foreground service** so Android doesn't freeze the socket when backgrounded.
 - **Control-key bar** (Ctrl-C/D/Z/L, Tab, Esc, arrows) since a soft keyboard
   can't produce those chords.
@@ -103,12 +106,11 @@ let Android Studio write it on first sync.
 
 ## Status
 
-Builds clean and the 20 unit tests pass.
+Builds clean and the 22 unit tests pass.
 
-The signed release build has been installed and launched on a Galaxy S24+
-(Android 15): the app starts without error, both home tabs render, and the chat
-server binds its listen socket.
+The signed release build runs on a Galaxy S24+ (Android 15) and **connects to a
+real SSH server** — handshake, host key confirmation and interactive shell all
+work.
 
-**The network paths are still unexercised** — no SSH connection, SFTP transfer
-or peer chat has been run against a real server yet, and the host key
-confirmation dialog has not been seen firing against a live handshake.
+Still unexercised: SFTP transfers, peer chat against another instance, and key
+authentication (only password auth has been used).
