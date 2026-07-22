@@ -1,9 +1,26 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
+
+/**
+ * Release signing details, from an untracked keystore.properties or from the
+ * environment (for CI). Absent both, the release build is simply left unsigned
+ * rather than failing — a checkout without the key can still compile.
+ */
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
+}
+
+fun signingValue(key: String, env: String): String? =
+    keystoreProps.getProperty(key) ?: System.getenv(env)
+
+val releaseStorePath = signingValue("storeFile", "SSHMOBILE_STORE_FILE")
 
 android {
     namespace = "com.j0ker.sshmobile"
@@ -17,10 +34,29 @@ android {
         versionName = "1.0.0"
     }
 
+    signingConfigs {
+        create("release") {
+            if (releaseStorePath != null) {
+                storeFile = file(releaseStorePath)
+                storePassword = signingValue("storePassword", "SSHMOBILE_STORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "SSHMOBILE_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "SSHMOBILE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // R8 is left off deliberately: sshj resolves ciphers, key algorithms
+            // and transports reflectively through its Factory service lists, and
+            // a missing keep rule surfaces as a runtime handshake failure rather
+            // than a build error. proguard-rules.pro holds the rules for whenever
+            // this is turned on and properly tested against a real server.
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (releaseStorePath != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

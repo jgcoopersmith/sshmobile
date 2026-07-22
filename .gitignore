@@ -9,3 +9,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Release signing — the key and its passwords must never be committed.
+keystore.properties
+*.jks
+*.keystore

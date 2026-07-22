@@ -59,11 +59,41 @@ Kotlin 2.0.21, compileSdk/targetSdk 36, minSdk 26.
 
 The APK lands in `app/build/outputs/apk/debug/app-debug.apk`.
 
-Unit tests (ANSI stripper, SFTP path and size helpers):
+Unit tests (ANSI stripper, host key prompt bridge, SFTP path and size helpers):
 
 ```bash
 ./gradlew testDebugUnitTest
 ```
+
+### Release builds
+
+`assembleRelease` signs the APK when it can find a key, and produces an unsigned
+one when it can't — so a fresh checkout still builds. Supply the key either
+through an untracked `keystore.properties` at the repo root:
+
+```properties
+storeFile=/absolute/path/to/sshmobile-release.jks
+storePassword=…
+keyAlias=sshmobile
+keyPassword=…
+```
+
+or through `SSHMOBILE_STORE_FILE`, `SSHMOBILE_STORE_PASSWORD`,
+`SSHMOBILE_KEY_ALIAS` and `SSHMOBILE_KEY_PASSWORD` in the environment, for CI.
+
+```bash
+./gradlew assembleRelease
+```
+
+`keystore.properties`, `*.jks` and `*.keystore` are gitignored. **The signing key
+cannot be regenerated** — every future update must be signed with the same key
+or Android will reject it as a different app.
+
+R8 is deliberately off for release. sshj resolves ciphers, key algorithms and
+transports reflectively through its Factory service lists, so a missing keep
+rule shows up as a runtime handshake failure rather than a build error.
+`proguard-rules.pro` carries the rules for whenever it's turned on and tested
+against a real server.
 
 JDK 25 will not work — Gradle 8.11.1 rejects it. Android Studio's bundled JBR is
 a JDK 21; point `JAVA_HOME` at it if your system default is newer.
@@ -73,10 +103,12 @@ let Android Studio write it on first sync.
 
 ## Status
 
-Builds clean and the 14 unit tests pass.
+Builds clean and the 20 unit tests pass.
 
-Installed and launched on a Galaxy S24+ (Android 15): the app starts without
-error, both home tabs render, and the chat server binds its listen socket.
+The signed release build has been installed and launched on a Galaxy S24+
+(Android 15): the app starts without error, both home tabs render, and the chat
+server binds its listen socket.
 
 **The network paths are still unexercised** — no SSH connection, SFTP transfer
-or peer chat has been run against a real server yet.
+or peer chat has been run against a real server yet, and the host key
+confirmation dialog has not been seen firing against a live handshake.
