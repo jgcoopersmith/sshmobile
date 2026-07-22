@@ -35,6 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -127,7 +128,7 @@ fun SessionScreen(vm: SessionViewModel, onBack: () -> Unit) {
 /** Port of `Controls/TerminalPanel.cs`. */
 @Composable
 private fun TerminalPane(vm: SessionViewModel, tab: TerminalTab, modifier: Modifier) {
-    var input by remember(tab.id) { mutableStateOf("") }
+    var input by rememberSaveable(tab.id) { mutableStateOf("") }
 
     Column(modifier.fillMaxWidth()) {
         Scrollback(
@@ -168,7 +169,7 @@ private fun TerminalPane(vm: SessionViewModel, tab: TerminalTab, modifier: Modif
 /** Port of `Controls/ChatPanel.cs`. */
 @Composable
 private fun ChatPane(vm: SessionViewModel, tab: ChatTab, modifier: Modifier) {
-    var input by remember(tab.id) { mutableStateOf("") }
+    var input by rememberSaveable(tab.id) { mutableStateOf("") }
 
     Column(modifier.fillMaxWidth()) {
         Text(
@@ -215,8 +216,11 @@ private fun Scrollback(tab: Tab, modifier: Modifier, monospace: Boolean, fontSiz
         }
     }
 
-    // The desktop called ScrollToCaret on every append.
-    LaunchedEffect(tab.segments.size) {
+    // The desktop called ScrollToCaret on every append. maxValue is keyed too so
+    // a rotation re-pins to the bottom — the restored pixel offset is stale once
+    // the text reflows to a new width, which otherwise leaves the newest line
+    // clipped under the tab strip.
+    LaunchedEffect(tab.segments.size, scroll.maxValue) {
         scroll.animateScrollTo(scroll.maxValue)
     }
 
