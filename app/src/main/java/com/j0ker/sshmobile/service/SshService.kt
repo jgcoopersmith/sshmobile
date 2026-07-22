@@ -39,7 +39,7 @@ class SshService : LifecycleService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("SSH Mobile")
+            .setContentTitle(getString(R.string.app_name))
             .setContentText(status)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(tap)
@@ -54,7 +54,9 @@ class SshService : LifecycleService() {
             CHANNEL_ID,
             "SSH sessions",
             NotificationManager.IMPORTANCE_LOW,
-        ).apply { description = "Shown while SSH Mobile has an open session." }
+        ).apply {
+            description = "Shown while ${getString(R.string.app_name)} has an open session."
+        }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 

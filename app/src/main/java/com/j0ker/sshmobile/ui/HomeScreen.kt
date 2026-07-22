@@ -33,8 +33,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.j0ker.sshmobile.R
 import com.j0ker.sshmobile.data.ConnectionProfile
 import com.j0ker.sshmobile.data.PeerProfile
 
@@ -66,7 +68,7 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("SSH Mobile") },
+                title = { Text(stringResource(R.string.app_name)) },
                 actions = {
                     if (vm.tabs.isNotEmpty()) {
                         IconButton(onClick = onOpenSessions) {
