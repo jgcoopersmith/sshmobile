@@ -36,6 +36,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,8 +47,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.j0ker.sshmobile.R
+import com.j0ker.sshmobile.chat.localIpv4Address
 import com.j0ker.sshmobile.data.ConnectionProfile
 import com.j0ker.sshmobile.data.PeerProfile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private enum class HomeList { Ssh, Peers }
 
@@ -73,6 +77,12 @@ fun HomeScreen(
     var deletingPeer by remember { mutableStateOf<PeerProfile?>(null) }
 
     val listenPort by vm.chatListenPort.collectAsStateWithLifecycle()
+
+    // Enumerating interfaces is I/O; keep it off the main thread. Re-read when
+    // the listener starts, which is the point the address becomes worth showing.
+    val localIp by produceState<String?>(null, listenPort) {
+        value = withContext(Dispatchers.IO) { localIpv4Address() }
+    }
 
     Scaffold(
         topBar = {
@@ -113,7 +123,7 @@ fun HomeScreen(
         Column(Modifier.padding(padding).fillMaxSize()) {
             TabRow(selectedTabIndex = list.ordinal) {
                 Tab(list == HomeList.Ssh, { list = HomeList.Ssh }, text = { Text("SSH Connections") })
-                Tab(list == HomeList.Peers, { list = HomeList.Peers }, text = { Text("Chat Peers") })
+                Tab(list == HomeList.Peers, { list = HomeList.Peers }, text = { Text("Chat") })
             }
 
             when (list) {
@@ -168,12 +178,18 @@ fun HomeScreen(
 
                 HomeList.Peers -> LazyColumn(Modifier.fillMaxSize()) {
                     item {
-                        Text(
-                            if (listenPort > 0) "Listening on port $listenPort" else "Starting…",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(16.dp, 8.dp),
-                        )
+                        Column(Modifier.padding(16.dp, 8.dp)) {
+                            Text(
+                                "IP: ${localIp ?: "unavailable"}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                if (listenPort > 0) "Listening on port $listenPort" else "Starting…",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                     items(vm.peers, key = { it.id }) { peer ->
                         ListItem(
