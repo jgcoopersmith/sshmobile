@@ -1,8 +1,7 @@
 package com.j0ker.sshmobile.ui
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,13 +12,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -28,6 +28,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -37,26 +40,50 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.j0ker.sshmobile.data.ConnectionProfile
+import com.j0ker.sshmobile.data.LocalFiles
 import com.j0ker.sshmobile.ssh.RemoteFile
 import com.j0ker.sshmobile.ssh.SftpSession
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 private val STAMP = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
 
+private enum class Pane { Remote, Local }
+
+/** One row, from either side. */
+private data class Entry(
+    val name: String,
+    val path: String,
+    val isDirectory: Boolean,
+    val size: Long,
+    val modified: Long,
+)
+
+private fun RemoteFile.toEntry() = Entry(name, path, isDirectory, size, modified)
+private fun File.toEntry() = Entry(name, absolutePath, isDirectory, length(), lastModified())
+
 /**
- * Port of `Forms/SftpBrowserForm.cs`. The desktop's multi-select ListView with
- * a button bar becomes a single-select list — a phone has no modifier keys —
- * with the file picker replaced by SAF.
+ * Port of `Forms/SftpBrowserForm.cs`, with a local pane the desktop never had —
+ * on Windows you drag files from Explorer, which a phone has no equivalent of.
+ *
+ * Both sides keep their own directory, so a transfer needs no file picker: the
+ * destination is simply wherever the other pane is pointing.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,52 +92,58 @@ fun SftpScreen(profile: ConnectionProfile, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val session = remember(profile.id) { SftpSession(context, profile) }
 
-    var path by remember { mutableStateOf("/") }
-    var entries by remember { mutableStateOf<List<RemoteFile>>(emptyList()) }
+    var pane by rememberSaveable { mutableStateOf(Pane.Remote) }
+    var remotePath by rememberSaveable { mutableStateOf("/") }
+    var localPath by rememberSaveable { mutableStateOf(LocalFiles.defaultRoot().absolutePath) }
+    var remoteEntries by remember { mutableStateOf<List<Entry>>(emptyList()) }
+    var localEntries by remember { mutableStateOf<List<Entry>>(emptyList()) }
     var busy by remember { mutableStateOf(true) }
     var status by remember { mutableStateOf<String?>(null) }
-    var pendingDelete by remember { mutableStateOf<RemoteFile?>(null) }
-    var downloadTarget by remember { mutableStateOf<RemoteFile?>(null) }
+    var pendingDelete by remember { mutableStateOf<Entry?>(null) }
+    var hasLocalAccess by remember { mutableStateOf(LocalFiles.hasAccess(context)) }
 
     val hostKeyPrompt by session.hostKeyPrompter.pending.collectAsStateWithLifecycle()
 
-    fun refresh(target: String = path) {
+    fun refreshLocal(target: String = localPath) {
+        scope.launch {
+            hasLocalAccess = LocalFiles.hasAccess(context)
+            if (!hasLocalAccess) return@launch
+            val listing = withContext(Dispatchers.IO) {
+                runCatching { LocalFiles.list(File(target)).map { it.toEntry() } }
+            }
+            listing
+                .onSuccess { localPath = target; localEntries = it }
+                .onFailure { status = "Cannot read $target: ${it.message}" }
+        }
+    }
+
+    fun refreshRemote(target: String = remotePath) {
         scope.launch {
             busy = true
             runCatching { session.list(target) }
-                .onSuccess { path = target; entries = it; status = null }
+                .onSuccess { remotePath = target; remoteEntries = it.map { f -> f.toEntry() }; status = null }
                 .onFailure { status = "Error listing directory: ${it.message}" }
             busy = false
         }
     }
 
-    val saveTo = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
-        val file = downloadTarget
-        downloadTarget = null
-        if (uri == null || file == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            busy = true
-            runCatching { session.download(file, uri) }
-                .onSuccess { status = "Downloaded ${file.name}." }
-                .onFailure { status = "Download failed: ${it.message}" }
-            busy = false
+    // "All files access" is granted on a settings screen, so the answer only
+    // arrives when the user comes back to the app.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && !hasLocalAccess) {
+                hasLocalAccess = LocalFiles.hasAccess(context)
+                if (hasLocalAccess) refreshLocal()
+            }
         }
-    }
-
-    val pickUpload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            busy = true
-            val name = uri.lastPathSegment?.substringAfterLast('/') ?: "upload"
-            runCatching { session.upload(uri, name, path) }
-                .onSuccess { status = "Uploaded $name."; refresh() }
-                .onFailure { status = "Upload failed: ${it.message}"; busy = false }
-        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(profile.id) {
         runCatching { session.connect() }
-            .onSuccess { refresh("/") }
+            .onSuccess { refreshRemote("/"); refreshLocal() }
             .onFailure { failure ->
                 val mismatch = session.hostKeyMismatch
                 status = when {
@@ -124,9 +157,11 @@ fun SftpScreen(profile: ConnectionProfile, onBack: () -> Unit) {
             }
     }
 
-    DisposableEffect(profile.id) {
-        onDispose { session.disconnect() }
-    }
+    DisposableEffect(profile.id) { onDispose { session.disconnect() } }
+
+    val entries = if (pane == Pane.Remote) remoteEntries else localEntries
+    val currentPath = if (pane == Pane.Remote) remotePath else localPath
+    val otherPath = if (pane == Pane.Remote) localPath else remotePath
 
     Scaffold(
         topBar = {
@@ -139,22 +174,45 @@ fun SftpScreen(profile: ConnectionProfile, onBack: () -> Unit) {
                 },
                 actions = {
                     LabelledAction(Icons.Default.ArrowUpward, "Up") {
-                        refresh(SftpSession.parentOf(path))
+                        if (pane == Pane.Remote) refreshRemote(SftpSession.parentOf(remotePath))
+                        else refreshLocal(LocalFiles.parentOf(localPath))
                     }
-                    LabelledAction(Icons.Default.Refresh, "Refresh") { refresh() }
-                    LabelledAction(Icons.Default.Upload, "Upload") {
-                        pickUpload.launch(arrayOf("*/*"))
+                    LabelledAction(Icons.Default.Refresh, "Refresh") {
+                        if (pane == Pane.Remote) refreshRemote() else refreshLocal()
                     }
                 },
             )
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
+
+            SingleChoiceSegmentedButtonRow(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            ) {
+                SegmentedButton(
+                    selected = pane == Pane.Remote,
+                    onClick = { pane = Pane.Remote },
+                    shape = SegmentedButtonDefaults.itemShape(0, 2),
+                ) { Text("Remote") }
+                SegmentedButton(
+                    selected = pane == Pane.Local,
+                    onClick = { pane = Pane.Local; refreshLocal() },
+                    shape = SegmentedButtonDefaults.itemShape(1, 2),
+                ) { Text("Local") }
+            }
+
             Text(
-                path,
+                currentPath,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth().padding(16.dp, 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(16.dp, 2.dp),
+            )
+            // Transfers land in the other pane's directory, so it has to be visible.
+            Text(
+                if (pane == Pane.Remote) "Downloads to $otherPath" else "Uploads to $otherPath",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().padding(16.dp, 0.dp, 16.dp, 6.dp),
             )
             status?.let {
                 Text(
@@ -165,7 +223,12 @@ fun SftpScreen(profile: ConnectionProfile, onBack: () -> Unit) {
                 )
             }
 
-            if (busy) {
+            if (pane == Pane.Local && !hasLocalAccess) {
+                LocalAccessPrompt { context.startActivity(LocalFiles.accessSettingsIntent(context)) }
+                return@Column
+            }
+
+            if (busy && pane == Pane.Remote) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
@@ -177,7 +240,8 @@ fun SftpScreen(profile: ConnectionProfile, onBack: () -> Unit) {
                     ListItem(
                         leadingContent = {
                             Icon(
-                                if (entry.isDirectory) Icons.Default.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
+                                if (entry.isDirectory) Icons.Default.Folder
+                                else Icons.AutoMirrored.Filled.InsertDriveFile,
                                 contentDescription = null,
                             )
                         },
@@ -191,20 +255,38 @@ fun SftpScreen(profile: ConnectionProfile, onBack: () -> Unit) {
                         trailingContent = {
                             Row {
                                 if (!entry.isDirectory) {
-                                    IconButton(onClick = {
-                                        downloadTarget = entry
-                                        saveTo.launch(entry.name)
-                                    }) {
-                                        Icon(Icons.Default.Download, contentDescription = "Download")
+                                    if (pane == Pane.Remote) {
+                                        LabelledAction(Icons.Default.Download, "Get") {
+                                            transfer(scope, { status = it }, { busy = it }) {
+                                                session.download(
+                                                    RemoteFile(
+                                                        entry.name,
+                                                        entry.path,
+                                                        false,
+                                                        entry.size,
+                                                        entry.modified,
+                                                    ),
+                                                    File(localPath, entry.name),
+                                                )
+                                                "Downloaded ${entry.name}."
+                                            }
+                                        }
+                                    } else {
+                                        LabelledAction(Icons.Default.Upload, "Put") {
+                                            transfer(scope, { status = it }, { busy = it }) {
+                                                session.upload(File(entry.path), remotePath)
+                                                refreshRemote()
+                                                "Uploaded ${entry.name}."
+                                            }
+                                        }
                                     }
                                 }
-                                IconButton(onClick = { pendingDelete = entry }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete")
-                                }
+                                LabelledAction(Icons.Default.Delete, "Delete") { pendingDelete = entry }
                             }
                         },
                         modifier = Modifier.clickable {
-                            if (entry.isDirectory) refresh(entry.path)
+                            if (!entry.isDirectory) return@clickable
+                            if (pane == Pane.Remote) refreshRemote(entry.path) else refreshLocal(entry.path)
                         },
                     )
                     HorizontalDivider()
@@ -221,11 +303,63 @@ fun SftpScreen(profile: ConnectionProfile, onBack: () -> Unit) {
         ConfirmDialog(entry.name, { pendingDelete = null }) {
             pendingDelete = null
             scope.launch {
-                busy = true
-                runCatching { session.delete(entry) }
-                    .onSuccess { refresh() }
-                    .onFailure { status = "Delete failed: ${it.message}"; busy = false }
+                val outcome = runCatching {
+                    if (pane == Pane.Remote) {
+                        session.delete(
+                            RemoteFile(entry.name, entry.path, entry.isDirectory, entry.size, entry.modified),
+                        )
+                    } else {
+                        // A non-empty directory fails rather than recursing; the
+                        // phone's storage is not somewhere to delete blindly.
+                        withContext(Dispatchers.IO) {
+                            if (!File(entry.path).delete()) error("could not delete")
+                        }
+                    }
+                }
+                outcome
+                    .onSuccess {
+                        status = "Deleted ${entry.name}."
+                        if (pane == Pane.Remote) refreshRemote() else refreshLocal()
+                    }
+                    .onFailure { status = "Delete failed: ${it.message}" }
             }
         }
+    }
+}
+
+/** Runs a transfer, reporting its outcome into [setStatus]. */
+private fun transfer(
+    scope: kotlinx.coroutines.CoroutineScope,
+    setStatus: (String) -> Unit,
+    setBusy: (Boolean) -> Unit,
+    block: suspend () -> String,
+) {
+    scope.launch {
+        setBusy(true)
+        runCatching { block() }
+            .onSuccess { setStatus(it) }
+            .onFailure { setStatus("Transfer failed: ${it.message}") }
+        setBusy(false)
+    }
+}
+
+@Composable
+private fun LocalAccessPrompt(onGrant: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            "Browsing the phone's storage needs \"All files access\".",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            "Android grants this on its own settings screen rather than in a dialog. " +
+                "This screen updates when you come back.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Button(onClick = onGrant) { Text("Open settings") }
     }
 }

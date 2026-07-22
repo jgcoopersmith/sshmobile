@@ -10,8 +10,7 @@ import net.schmizz.sshj.sftp.FileMode
 import net.schmizz.sshj.sftp.SFTPClient
 import net.schmizz.sshj.userauth.keyprovider.KeyProvider
 import net.schmizz.sshj.userauth.password.PasswordUtils
-import net.schmizz.sshj.xfer.InMemorySourceFile
-import java.io.InputStream
+import java.io.File
 
 /** One row of the remote listing; the desktop's `ListViewItem` + `ISftpFile`. */
 data class RemoteFile(
@@ -91,29 +90,18 @@ class SftpSession(
             .toList()
     }
 
-    /** Downloads into a SAF destination rather than the desktop's folder picker. */
-    suspend fun download(remote: RemoteFile, destination: Uri) = withContext(Dispatchers.IO) {
+    /**
+     * Both directions stream through sshj's own file transfer rather than
+     * buffering in memory, so a large file doesn't have to fit in the heap.
+     */
+    suspend fun download(remote: RemoteFile, destination: File) = withContext(Dispatchers.IO) {
         val client = sftp ?: error("Not connected")
-        context.contentResolver.openOutputStream(destination)?.use { out ->
-            client.open(remote.path).use { handle ->
-                handle.RemoteFileInputStream().use { input -> input.copyTo(out) }
-            }
-        } ?: error("Could not open destination")
+        client.get(remote.path, destination.absolutePath)
     }
 
-    suspend fun upload(source: Uri, name: String, remoteDir: String) = withContext(Dispatchers.IO) {
+    suspend fun upload(source: File, remoteDir: String) = withContext(Dispatchers.IO) {
         val client = sftp ?: error("Not connected")
-        val bytes = context.contentResolver.openInputStream(source)?.use(InputStream::readBytes)
-            ?: error("Could not read source")
-        val target = remoteDir.trimEnd('/') + "/" + name
-        client.put(
-            object : InMemorySourceFile() {
-                override fun getName() = name
-                override fun getLength() = bytes.size.toLong()
-                override fun getInputStream(): InputStream = bytes.inputStream()
-            },
-            target,
-        )
+        client.put(source.absolutePath, remoteDir.trimEnd('/') + "/" + source.name)
     }
 
     suspend fun delete(file: RemoteFile) = withContext(Dispatchers.IO) {
