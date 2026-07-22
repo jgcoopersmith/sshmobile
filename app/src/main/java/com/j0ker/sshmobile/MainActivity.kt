@@ -39,6 +39,12 @@ class MainActivity : ComponentActivity() {
 
                 BackHandler(enabled = screen != Screen.Home) { screen = Screen.Home }
 
+                // An inbound chat peer opens its own tab; bring the user to it
+                // rather than leaving them on whatever screen they were on.
+                LaunchedEffect(vm) {
+                    vm.focusSessions.collect { screen = Screen.Sessions }
+                }
+
                 when (screen) {
                     Screen.Home -> HomeScreen(
                         vm = vm,

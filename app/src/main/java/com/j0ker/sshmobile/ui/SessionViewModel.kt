@@ -18,6 +18,9 @@ import com.j0ker.sshmobile.ssh.HostKeyPrompt
 import com.j0ker.sshmobile.ssh.SshSession
 import com.j0ker.sshmobile.ssh.SshState
 import com.j0ker.sshmobile.ssh.TerminalEvent
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -90,6 +93,14 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
     var pendingHostKey by mutableStateOf<Pair<TerminalTab, HostKeyPrompt>?>(null)
         private set
 
+    /**
+     * Emitted when something worth looking at opens a tab on its own — an
+     * inbound chat peer, which the user did not initiate and would otherwise
+     * only notice as a badge. The activity collects this to switch screens.
+     */
+    private val _focusSessions = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    val focusSessions: SharedFlow<Unit> = _focusSessions.asSharedFlow()
+
     val activeTab: Tab? get() = tabs.firstOrNull { it.id == activeTabId }
 
     private val chatServer = ChatServer(settings.localUsername).also { server ->
@@ -108,6 +119,7 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
             is ChatEvent.PeerConnected -> {
                 val tab = openChatTab(event.peerId, event.displayName)
                 tab.append("*** Connected to ${event.displayName}.\n", LineKind.System)
+                _focusSessions.tryEmit(Unit)
             }
             is ChatEvent.PeerDisconnected ->
                 chatTabFor(event.peerId)?.append(
