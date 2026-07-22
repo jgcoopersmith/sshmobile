@@ -125,6 +125,18 @@ class ChatServer(val localUsername: String) {
     }
 }
 
+private val BOM = Char(0xFEFF).toString()
+
+/**
+ * Cleans up a received protocol line.
+ *
+ * The desktop client writes with .NET's `Encoding.UTF8`, which emits a
+ * byte-order mark ahead of its very first write — so the handshake arrives as
+ * "﻿HELLO:name" and a naive startsWith check rejects it. It also writes
+ * Windows line endings, though BufferedReader already handles those.
+ */
+internal fun normaliseLine(raw: String): String = raw.removePrefix(BOM).trimEnd('\r')
+
 /** Port of `PeerConnection`. */
 internal class PeerConnection(
     private val socket: Socket,
@@ -135,6 +147,9 @@ internal class PeerConnection(
     @Volatile
     var remoteUsername: String = "Unknown"
         private set
+
+    @Volatile
+    private var registered = false
 
     private var writer: BufferedWriter? = null
 
@@ -149,25 +164,37 @@ internal class PeerConnection(
             } catch (_: Exception) {
                 // Fall through to cleanup below.
             } finally {
-                server.unregisterPeer(this)
+                // Only announce a disconnect for a peer that was announced as
+                // connected, or a failed dial would post a phantom departure.
+                if (registered) server.unregisterPeer(this)
                 runCatching { socket.close() }
             }
         }
     }
 
     private fun readLoop(reader: BufferedReader) {
-        var handshook = false
         while (true) {
-            val line = reader.readLine() ?: break
+            val line = normaliseLine(reader.readLine() ?: break)
             when {
-                !handshook && line.startsWith("HELLO:") -> {
+                line.startsWith("HELLO:") -> {
                     remoteUsername = line.substring(6)
-                    handshook = true
-                    server.registerPeer(this)
+                    register()
                 }
-                line.startsWith("MSG:") -> server.raiseMessage(this, line.substring(4))
+                line.startsWith("MSG:") -> {
+                    // A peer whose handshake never arrived still gets a window,
+                    // rather than having its messages silently discarded because
+                    // there was nowhere to put them.
+                    register()
+                    server.raiseMessage(this, line.substring(4))
+                }
             }
         }
+    }
+
+    private fun register() {
+        if (registered) return
+        registered = true
+        server.registerPeer(this)
     }
 
     fun send(text: String) {
