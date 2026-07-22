@@ -123,14 +123,13 @@ fun HomeScreen(
                         ListItem(
                             headlineContent = { Text(profile.label) },
                             supportingContent = {
-                                val auth = if (profile.useKeyAuth) "key auth" else "password auth"
                                 if (session != null) {
                                     Text(
                                         "session open — tap to resume",
                                         color = MaterialTheme.colorScheme.primary,
                                     )
                                 } else {
-                                    Text(auth)
+                                    Text("Connect")
                                 }
                             },
                             trailingContent = {
