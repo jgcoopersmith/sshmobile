@@ -32,11 +32,17 @@ data class PeerProfile(
     val label: String get() = if (name.isNotEmpty()) name else "$host:$port"
 }
 
+/**
+ * Default chat listen port. Fixed rather than OS-assigned so a peer can be
+ * told once where to find you, instead of the port changing every launch.
+ */
+const val DEFAULT_CHAT_PORT = 23107
+
 /** Mobile-only preferences; the desktop client had no settings screen. */
 @Serializable
 data class AppSettings(
     val localUsername: String = "android",
-    val chatListenPort: Int = 0,
+    val chatListenPort: Int = DEFAULT_CHAT_PORT,
     val terminalFontSize: Int = 13,
     val terminalColumns: Int = 100,
     val terminalRows: Int = 40,

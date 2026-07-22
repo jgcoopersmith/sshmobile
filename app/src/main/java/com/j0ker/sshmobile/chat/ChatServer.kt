@@ -49,18 +49,33 @@ class ChatServer(val localUsername: String) {
     private val _listenPort = MutableStateFlow(0)
     val listenPort: StateFlow<Int> = _listenPort.asStateFlow()
 
-    /** Port 0 lets the OS pick, as on the desktop. */
+    /**
+     * Binds [port], or 0 to let the OS pick. A configured port can already be
+     * taken — by another copy of the app, or anything else — so rather than
+     * leaving chat dead we fall back to an OS-assigned port and say so. The UI
+     * always shows [listenPort], which is the port actually bound.
+     */
     fun start(port: Int = 0) {
         if (listener != null) return
         scope.launch {
-            try {
-                val socket = ServerSocket(port)
-                listener = socket
-                _listenPort.value = socket.localPort
-                acceptLoop(socket)
+            val socket = try {
+                ServerSocket(port)
             } catch (e: Exception) {
-                _events.emit(ChatEvent.Failed("Could not listen: ${e.message}"))
+                val fallback = runCatching { ServerSocket(0) }.getOrNull()
+                if (fallback == null) {
+                    _events.emit(ChatEvent.Failed("Could not listen: ${e.message}"))
+                    return@launch
+                }
+                _events.emit(
+                    ChatEvent.Failed(
+                        "Port $port is unavailable; listening on ${fallback.localPort} instead.",
+                    ),
+                )
+                fallback
             }
+            listener = socket
+            _listenPort.value = socket.localPort
+            acceptLoop(socket)
         }
     }
 

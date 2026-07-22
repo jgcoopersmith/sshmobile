@@ -31,6 +31,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.j0ker.sshmobile.BuildConfig
+import com.j0ker.sshmobile.data.DEFAULT_CHAT_PORT
 
 /**
  * Mobile-only. The desktop took its chat identity from `Environment.UserName`
@@ -52,7 +53,10 @@ fun SettingsScreen(vm: SessionViewModel, onBack: () -> Unit) {
         vm.saveSettings(
             vm.settings.copy(
                 localUsername = username.trim().ifEmpty { "android" },
-                chatListenPort = listenPort.toIntOrNull()?.coerceIn(0, 65535) ?: 0,
+                // A blank or out-of-range entry falls back to the default rather
+                // than to 0, which would hand out a different port every launch.
+                chatListenPort = listenPort.toIntOrNull()?.takeIf { it in 1..65535 }
+                    ?: DEFAULT_CHAT_PORT,
                 terminalFontSize = fontSize.toIntOrNull()?.coerceIn(8, 24) ?: 13,
                 terminalColumns = columns.toIntOrNull()?.coerceIn(40, 400) ?: 100,
                 terminalRows = rows.toIntOrNull()?.coerceIn(10, 200) ?: 40,
@@ -88,7 +92,7 @@ fun SettingsScreen(vm: SessionViewModel, onBack: () -> Unit) {
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-            NumberField(listenPort, { listenPort = it }, "Listen port (0 = any)")
+            NumberField(listenPort, { listenPort = it }, "Listen port (default $DEFAULT_CHAT_PORT)")
             Text(
                 if (actualPort > 0) "Currently listening on $actualPort" else "Not listening",
                 style = MaterialTheme.typography.bodySmall,

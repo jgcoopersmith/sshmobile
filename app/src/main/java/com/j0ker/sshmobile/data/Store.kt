@@ -115,7 +115,11 @@ class Store(context: Context) {
 
     fun loadSettings(): AppSettings {
         val raw = prefs.getString(KEY_SETTINGS, null) ?: return AppSettings()
-        return runCatching { json.decodeFromString<AppSettings>(raw) }.getOrDefault(AppSettings())
+        return runCatching { json.decodeFromString<AppSettings>(raw) }
+            .getOrDefault(AppSettings())
+            // Earlier builds defaulted to 0, meaning "any free port", which left
+            // a peer with no stable address to dial. Carry those forward.
+            .let { if (it.chatListenPort <= 0) it.copy(chatListenPort = DEFAULT_CHAT_PORT) else it }
     }
 
     fun saveSettings(settings: AppSettings) {
