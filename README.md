@@ -73,5 +73,10 @@ let Android Studio write it on first sync.
 
 ## Status
 
-Builds clean and the 14 unit tests pass. **Not yet run on a device or emulator**,
-so the UI, the live SSH path and the SFTP transfers are still unexercised.
+Builds clean and the 14 unit tests pass.
+
+Installed and launched on a Galaxy S24+ (Android 15): the app starts without
+error, both home tabs render, and the chat server binds its listen socket.
+
+**The network paths are still unexercised** — no SSH connection, SFTP transfer
+or peer chat has been run against a real server yet.
