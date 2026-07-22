@@ -14,6 +14,7 @@ import com.j0ker.sshmobile.data.ConnectionProfile
 import com.j0ker.sshmobile.data.PeerProfile
 import com.j0ker.sshmobile.data.Store
 import com.j0ker.sshmobile.service.SshService
+import com.j0ker.sshmobile.ssh.HostKeyPrompt
 import com.j0ker.sshmobile.ssh.SshSession
 import com.j0ker.sshmobile.ssh.SshState
 import com.j0ker.sshmobile.ssh.TerminalEvent
@@ -80,6 +81,14 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
 
     val tabs = mutableStateListOf<Tab>()
     var activeTabId by mutableStateOf<String?>(null)
+
+    /**
+     * The host key awaiting confirmation, with the tab that raised it. Held
+     * here rather than per-screen so the dialog appears even if the user has
+     * switched tabs while the connect was in flight.
+     */
+    var pendingHostKey by mutableStateOf<Pair<TerminalTab, HostKeyPrompt>?>(null)
+        private set
 
     val activeTab: Tab? get() = tabs.firstOrNull { it.id == activeTabId }
 
@@ -164,8 +173,20 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
                 refreshService()
             }
         }
+        viewModelScope.launch {
+            session.hostKeyPrompter.pending.collect { prompt ->
+                pendingHostKey = prompt?.let { tab to it }
+            }
+        }
 
         session.connect(settings.terminalColumns, settings.terminalRows)
+    }
+
+    /** Answers the dialog; the parked connect resumes or aborts on this. */
+    fun answerHostKey(accept: Boolean) {
+        val (tab, _) = pendingHostKey ?: return
+        tab.session.hostKeyPrompter.respond(accept)
+        pendingHostKey = null
     }
 
     fun send(tab: TerminalTab, line: String) {

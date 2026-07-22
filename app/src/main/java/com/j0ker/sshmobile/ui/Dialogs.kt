@@ -2,6 +2,7 @@ package com.j0ker.sshmobile.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -21,11 +23,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.j0ker.sshmobile.data.ConnectionProfile
 import com.j0ker.sshmobile.data.PeerProfile
+import com.j0ker.sshmobile.ssh.HostKeyPrompt
 
 /**
  * Port of `Forms/ConnectionDialog.cs`. The desktop's OpenFileDialog for the
@@ -184,6 +188,47 @@ fun PeerDialog(
             }) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * First-use host key confirmation — the counterpart of OpenSSH's
+ * "The authenticity of host ... can't be established".
+ *
+ * Deliberately not dismissable by tapping outside: the pending connect is
+ * parked on a background thread waiting for a definite answer, and an
+ * accidental dismissal must count as a refusal, not as trust.
+ */
+@Composable
+fun HostKeyDialog(
+    prompt: HostKeyPrompt,
+    onRespond: (accept: Boolean) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { onRespond(false) },
+        title = { Text("Unknown host") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("The authenticity of ${prompt.target} can't be established.")
+                Text(
+                    prompt.fingerprint,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(8.dp),
+                )
+                Text(
+                    "Check this against the server's own fingerprint before accepting. " +
+                        "It will be remembered, and you'll be warned if it ever changes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onRespond(true) }) { Text("Connect") } },
+        dismissButton = { TextButton(onClick = { onRespond(false) }) { Text("Cancel") } },
     )
 }
 

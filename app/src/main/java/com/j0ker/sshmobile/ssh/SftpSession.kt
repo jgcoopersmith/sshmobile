@@ -30,15 +30,25 @@ data class RemoteFile(
 class SftpSession(
     private val context: Context,
     private val profile: ConnectionProfile,
-    private val onUnknownHostKey: (fingerprint: String) -> Boolean = { true },
 ) {
 
     private var client: SSHClient? = null
     private var sftp: SFTPClient? = null
 
+    /** Drives the same first-use confirmation dialog as the terminal. */
+    val hostKeyPrompter = HostKeyPrompter()
+
+    private val verifier = TofuHostKeyVerifier(context, hostKeyPrompter::ask)
+
+    /** Non-null when a connect failed because the pinned fingerprint changed. */
+    val hostKeyMismatch: TofuHostKeyVerifier.Mismatch? get() = verifier.lastMismatch
+
+    /** True when a connect failed because the user refused the fingerprint. */
+    val hostKeyDeclined: Boolean get() = hostKeyPrompter.declined
+
     suspend fun connect() = withContext(Dispatchers.IO) {
         val ssh = SSHClient().apply {
-            addHostKeyVerifier(TofuHostKeyVerifier(context, onUnknownHostKey))
+            addHostKeyVerifier(verifier)
             connectTimeout = 15_000
             connect(profile.host, profile.port)
         }
@@ -120,6 +130,8 @@ class SftpSession(
     }
 
     fun disconnect() {
+        // Releases the transport thread if it is parked on the host key dialog.
+        hostKeyPrompter.cancel()
         runCatching { sftp?.close() }
         runCatching { client?.disconnect() }
         sftp = null

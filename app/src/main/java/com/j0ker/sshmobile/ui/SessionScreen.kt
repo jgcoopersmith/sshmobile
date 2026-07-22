@@ -118,6 +118,10 @@ fun SessionScreen(vm: SessionViewModel, onBack: () -> Unit) {
             }
         }
     }
+
+    vm.pendingHostKey?.let { (_, prompt) ->
+        HostKeyDialog(prompt) { vm.answerHostKey(it) }
+    }
 }
 
 /** Port of `Controls/TerminalPanel.cs`. */

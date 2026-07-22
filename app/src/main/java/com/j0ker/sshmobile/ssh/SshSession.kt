@@ -42,7 +42,6 @@ enum class SshState { Disconnected, Connecting, Connected, Failed }
 class SshSession(
     private val context: Context,
     val profile: ConnectionProfile,
-    private val onUnknownHostKey: (fingerprint: String) -> Boolean = { true },
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -61,7 +60,10 @@ class SshSession(
     private val _state = MutableStateFlow(SshState.Disconnected)
     val state: StateFlow<SshState> = _state.asStateFlow()
 
-    private val verifier = TofuHostKeyVerifier(context, onUnknownHostKey)
+    /** Drives the first-use confirmation dialog; see [HostKeyPrompter]. */
+    val hostKeyPrompter = HostKeyPrompter()
+
+    private val verifier = TofuHostKeyVerifier(context, hostKeyPrompter::ask)
 
     /** Fingerprint mismatch from the last failed connect, if that is why it failed. */
     val hostKeyMismatch: TofuHostKeyVerifier.Mismatch? get() = verifier.lastMismatch
@@ -109,6 +111,8 @@ class SshSession(
                                 "[Refusing to connect. Forget the saved key to accept it.]",
                         ),
                     )
+                } else if (hostKeyPrompter.declined) {
+                    _events.emit(TerminalEvent.Error("[Host key not accepted. Not connecting.]"))
                 } else {
                     _events.emit(TerminalEvent.Error("[Connection failed: ${e.message}]"))
                 }
@@ -196,6 +200,8 @@ class SshSession(
     }
 
     private fun closeQuietly() {
+        // Releases the transport thread if it is parked on the host key dialog.
+        hostKeyPrompter.cancel()
         runCatching { shell?.close() }
         runCatching { session?.close() }
         runCatching { client?.disconnect() }

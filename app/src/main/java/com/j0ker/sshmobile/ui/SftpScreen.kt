@@ -42,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.j0ker.sshmobile.data.ConnectionProfile
 import com.j0ker.sshmobile.ssh.RemoteFile
 import com.j0ker.sshmobile.ssh.SftpSession
@@ -70,6 +71,8 @@ fun SftpScreen(profile: ConnectionProfile, onBack: () -> Unit) {
     var status by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<RemoteFile?>(null) }
     var downloadTarget by remember { mutableStateOf<RemoteFile?>(null) }
+
+    val hostKeyPrompt by session.hostKeyPrompter.pending.collectAsStateWithLifecycle()
 
     fun refresh(target: String = path) {
         scope.launch {
@@ -108,7 +111,17 @@ fun SftpScreen(profile: ConnectionProfile, onBack: () -> Unit) {
     LaunchedEffect(profile.id) {
         runCatching { session.connect() }
             .onSuccess { refresh("/") }
-            .onFailure { status = "SFTP connection failed: ${it.message}"; busy = false }
+            .onFailure { failure ->
+                val mismatch = session.hostKeyMismatch
+                status = when {
+                    mismatch != null ->
+                        "Host key for ${mismatch.hostname} changed — refusing to connect. " +
+                            "Known ${mismatch.expected}, got ${mismatch.actual}."
+                    session.hostKeyDeclined -> "Host key not accepted. Not connecting."
+                    else -> "SFTP connection failed: ${failure.message}"
+                }
+                busy = false
+            }
     }
 
     DisposableEffect(profile.id) {
@@ -200,6 +213,10 @@ fun SftpScreen(profile: ConnectionProfile, onBack: () -> Unit) {
                 }
             }
         }
+    }
+
+    hostKeyPrompt?.let { prompt ->
+        HostKeyDialog(prompt) { session.hostKeyPrompter.respond(it) }
     }
 
     pendingDelete?.let { entry ->
