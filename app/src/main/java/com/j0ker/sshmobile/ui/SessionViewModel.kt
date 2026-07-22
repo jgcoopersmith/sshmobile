@@ -151,6 +151,25 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
 
     // ------------------------------------------------------------------- ssh
 
+    /** The open terminal for a profile, if there is one. */
+    fun terminalFor(profileId: String): TerminalTab? =
+        tabs.filterIsInstance<TerminalTab>().firstOrNull { it.profile.id == profileId }
+
+    /**
+     * Tapping a connection that already has a session returns to it rather than
+     * dialling a second one — the desktop had a visible tab strip, so opening a
+     * duplicate was an obvious mistake; on a phone the existing session is off
+     * screen and a silent reconnect is easy to do by accident.
+     */
+    fun openOrResumeTerminal(profile: ConnectionProfile) {
+        val existing = terminalFor(profile.id)
+        if (existing != null) {
+            activeTabId = existing.id
+            return
+        }
+        openTerminal(profile)
+    }
+
     /** Port of `OpenTerminal`. */
     fun openTerminal(profile: ConnectionProfile) {
         val session = SshSession(getApplication(), profile)

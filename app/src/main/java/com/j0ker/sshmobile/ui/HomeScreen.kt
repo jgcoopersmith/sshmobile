@@ -1,6 +1,8 @@
 package com.j0ker.sshmobile.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +18,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -47,7 +51,7 @@ private enum class HomeList { Ssh, Peers }
  * above the chat peer list in a SplitContainer; a phone has no room for both,
  * so they become two tabs.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     vm: SessionViewModel,
@@ -71,8 +75,18 @@ fun HomeScreen(
                 title = { Text(stringResource(R.string.app_name)) },
                 actions = {
                     if (vm.tabs.isNotEmpty()) {
-                        IconButton(onClick = onOpenSessions) {
-                            Icon(Icons.Default.Terminal, contentDescription = "Open sessions")
+                        // Badged, so an open session is visible from here rather
+                        // than hiding behind an icon identical to the others.
+                        BadgedBox(
+                            badge = { Badge { Text("${vm.tabs.size}") } },
+                            modifier = Modifier.padding(end = 4.dp),
+                        ) {
+                            IconButton(onClick = onOpenSessions) {
+                                Icon(
+                                    Icons.Default.Terminal,
+                                    contentDescription = "Open sessions (${vm.tabs.size})",
+                                )
+                            }
                         }
                     }
                     IconButton(onClick = onOpenSettings) {
@@ -100,10 +114,19 @@ fun HomeScreen(
             when (list) {
                 HomeList.Ssh -> LazyColumn(Modifier.fillMaxSize()) {
                     items(vm.profiles, key = { it.id }) { profile ->
+                        val session = vm.terminalFor(profile.id)
                         ListItem(
                             headlineContent = { Text(profile.label) },
                             supportingContent = {
-                                Text(if (profile.useKeyAuth) "key auth" else "password auth")
+                                val auth = if (profile.useKeyAuth) "key auth" else "password auth"
+                                if (session != null) {
+                                    Text(
+                                        "session open — tap to resume",
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                } else {
+                                    Text(auth)
+                                }
                             },
                             trailingContent = {
                                 Row {
@@ -120,11 +143,19 @@ fun HomeScreen(
                                     }
                                 }
                             },
-                            // Tap replaces the desktop's double-click-to-connect.
-                            modifier = Modifier.clickable {
-                                vm.openTerminal(profile)
-                                onOpenSessions()
-                            },
+                            // Tap replaces the desktop's double-click-to-connect,
+                            // and resumes rather than redials when a session is
+                            // already open. Long-press still forces a second one.
+                            modifier = Modifier.combinedClickable(
+                                onClick = {
+                                    vm.openOrResumeTerminal(profile)
+                                    onOpenSessions()
+                                },
+                                onLongClick = {
+                                    vm.openTerminal(profile)
+                                    onOpenSessions()
+                                },
+                            ),
                         )
                         HorizontalDivider()
                     }
