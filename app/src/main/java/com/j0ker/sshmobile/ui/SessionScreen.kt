@@ -1,6 +1,9 @@
 package com.j0ker.sshmobile.ui
 
 import android.content.res.Configuration
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -15,12 +18,16 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.AssistChip
@@ -43,6 +50,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -56,6 +64,9 @@ import com.j0ker.sshmobile.ssh.SshState
 
 /** Trimmed from Material's 48dp default to give the terminal back some height. */
 private val TAB_ROW_HEIGHT = 40.dp
+
+/** The always-visible grab handle for the collapsible control-key strip. */
+private val HANDLE_WIDTH = 22.dp
 
 /** Control chords a soft keyboard cannot produce; the desktop had real keys. */
 private val ESC = Char(27).toString()
@@ -172,14 +183,7 @@ private fun TerminalPane(vm: SessionViewModel, tab: TerminalTab, modifier: Modif
             fontSize = vm.settings.terminalFontSize,
         )
 
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp, 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            CONTROL_KEYS.forEach { (label, sequence) ->
-                AssistChip(onClick = { vm.sendControl(tab, sequence) }, label = { Text(label) })
-            }
-        }
+        ControlKeyBar { sequence -> vm.sendControl(tab, sequence) }
 
         InputBar(
             value = input,
@@ -197,6 +201,53 @@ private fun TerminalPane(vm: SessionViewModel, tab: TerminalTab, modifier: Modif
                 input = ""
             },
         )
+    }
+}
+
+/**
+ * The control-key strip, collapsible behind a handle on the left. Tapping the
+ * handle slides the chips off to the right, leaving only the handle — useful in
+ * landscape, where the strip and the keyboard together crowd out the terminal.
+ */
+@Composable
+private fun ControlKeyBar(onKey: (String) -> Unit) {
+    var expanded by rememberSaveable { mutableStateOf(true) }
+
+    Box(Modifier.fillMaxWidth()) {
+        AnimatedVisibility(
+            visible = expanded,
+            // Slides by its own width, and AnimatedVisibility clips to bounds,
+            // so the chips travel out to the right and vanish.
+            enter = slideInHorizontally { it },
+            exit = slideOutHorizontally { it },
+            modifier = Modifier.padding(start = HANDLE_WIDTH),
+        ) {
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()).padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                CONTROL_KEYS.forEach { (label, sequence) ->
+                    AssistChip(onClick = { onKey(sequence) }, label = { Text(label) })
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .width(HANDLE_WIDTH)
+                .height(32.dp)
+                .clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .clickable { expanded = !expanded },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (expanded) Icons.Default.ChevronRight else Icons.Default.ChevronLeft,
+                contentDescription = if (expanded) "Hide control keys" else "Show control keys",
+                modifier = Modifier.size(18.dp),
+            )
+        }
     }
 }
 
