@@ -1,11 +1,14 @@
 package com.j0ker.sshmobile.ui
 
+import android.app.Activity
+import androidx.activity.compose.BackHandler
 import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +55,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -60,6 +66,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.j0ker.sshmobile.ssh.SshState
 
 /** Trimmed from Material's 48dp default to give the terminal back some height. */
@@ -97,9 +106,17 @@ fun SessionScreen(vm: SessionViewModel, onBack: () -> Unit) {
     // inline with the tabs and the app bar goes away; system back still works.
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
+    // Zen mode: double-tapping the output hides every piece of chrome, app and
+    // system alike, leaving only the terminal.
+    var zen by rememberSaveable { mutableStateOf(false) }
+    ImmersiveSystemBars(zen)
+    // Leaving zen is only possible by double-tapping, so back should take the
+    // user out of it rather than off the screen entirely.
+    BackHandler(enabled = zen) { zen = false }
+
     Scaffold(
         topBar = {
-            if (!landscape) {
+            if (!landscape && !zen) {
                 TopAppBar(
                     title = { Text(active?.title ?: "Sessions", maxLines = 1) },
                     navigationIcon = {
@@ -120,7 +137,7 @@ fun SessionScreen(vm: SessionViewModel, onBack: () -> Unit) {
             }
 
             val selectedIndex = vm.tabs.indexOfFirst { it.id == vm.activeTabId }.coerceAtLeast(0)
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            if (!zen) Row(verticalAlignment = Alignment.CenterVertically) {
                 if (landscape) {
                     IconButton(onClick = onBack, modifier = Modifier.size(TAB_ROW_HEIGHT)) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -157,9 +174,10 @@ fun SessionScreen(vm: SessionViewModel, onBack: () -> Unit) {
                 }
             }
 
+            val toggleZen = { zen = !zen }
             when (val tab = vm.activeTab) {
-                is TerminalTab -> TerminalPane(vm, tab, Modifier.weight(1f))
-                is ChatTab -> ChatPane(vm, tab, Modifier.weight(1f))
+                is TerminalTab -> TerminalPane(vm, tab, Modifier.weight(1f), zen, toggleZen)
+                is ChatTab -> ChatPane(vm, tab, Modifier.weight(1f), zen, toggleZen)
                 null -> Box(Modifier.weight(1f))
             }
         }
@@ -172,7 +190,13 @@ fun SessionScreen(vm: SessionViewModel, onBack: () -> Unit) {
 
 /** Port of `Controls/TerminalPanel.cs`. */
 @Composable
-private fun TerminalPane(vm: SessionViewModel, tab: TerminalTab, modifier: Modifier) {
+private fun TerminalPane(
+    vm: SessionViewModel,
+    tab: TerminalTab,
+    modifier: Modifier,
+    zen: Boolean,
+    onToggleZen: () -> Unit,
+) {
     var input by rememberSaveable(tab.id) { mutableStateOf("") }
 
     Column(modifier.fillMaxWidth()) {
@@ -181,7 +205,10 @@ private fun TerminalPane(vm: SessionViewModel, tab: TerminalTab, modifier: Modif
             modifier = Modifier.weight(1f).background(TerminalBackground),
             monospace = true,
             fontSize = vm.settings.terminalFontSize,
+            onDoubleTap = onToggleZen,
         )
+
+        if (zen) return@Column
 
         ControlKeyBar { sequence -> vm.sendControl(tab, sequence) }
 
@@ -253,20 +280,37 @@ private fun ControlKeyBar(onKey: (String) -> Unit) {
 
 /** Port of `Controls/ChatPanel.cs`. */
 @Composable
-private fun ChatPane(vm: SessionViewModel, tab: ChatTab, modifier: Modifier) {
+private fun ChatPane(
+    vm: SessionViewModel,
+    tab: ChatTab,
+    modifier: Modifier,
+    zen: Boolean,
+    onToggleZen: () -> Unit,
+) {
     var input by rememberSaveable(tab.id) { mutableStateOf("") }
 
     Column(modifier.fillMaxWidth()) {
-        Text(
-            "Chat with: ${tab.displayName}",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .padding(12.dp, 6.dp),
+        if (!zen) {
+            Text(
+                "Chat with: ${tab.displayName}",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(12.dp, 6.dp),
+            )
+        }
+        Scrollback(
+            tab = tab,
+            modifier = Modifier.weight(1f),
+            monospace = false,
+            fontSize = 14,
+            onDoubleTap = onToggleZen,
         )
-        Scrollback(tab = tab, modifier = Modifier.weight(1f), monospace = false, fontSize = 14)
+
+        if (zen) return@Column
+
         InputBar(
             value = input,
             onValueChange = { input = it },
@@ -287,7 +331,13 @@ private fun ChatPane(vm: SessionViewModel, tab: ChatTab, modifier: Modifier) {
  * list auto-scrolls when new output arrives.
  */
 @Composable
-private fun Scrollback(tab: Tab, modifier: Modifier, monospace: Boolean, fontSize: Int) {
+private fun Scrollback(
+    tab: Tab,
+    modifier: Modifier,
+    monospace: Boolean,
+    fontSize: Int,
+    onDoubleTap: () -> Unit,
+) {
     // The terminal keeps its dark canvas in both themes, so it always takes the
     // dark palette; chat follows the system theme.
     val darkPalette = monospace || isSystemInDarkTheme()
@@ -309,13 +359,45 @@ private fun Scrollback(tab: Tab, modifier: Modifier, monospace: Boolean, fontSiz
         scroll.animateScrollTo(scroll.maxValue)
     }
 
-    Column(modifier.fillMaxWidth().verticalScroll(scroll)) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .verticalScroll(scroll)
+            // Tap detection doesn't consume drags, so scrolling still works.
+            .pointerInput(Unit) { detectTapGestures(onDoubleTap = { onDoubleTap() }) },
+    ) {
         Text(
             text = text,
             fontFamily = if (monospace) FontFamily.Monospace else FontFamily.Default,
             fontSize = fontSize.sp,
             modifier = Modifier.fillMaxWidth().padding(8.dp),
         )
+    }
+}
+
+/**
+ * Hides the status and navigation bars while [immersive], and puts them back
+ * when it clears or the screen goes away — otherwise leaving the session in zen
+ * mode would strand the rest of the app without system bars.
+ *
+ * The bars stay swipe-reachable, so the user is never trapped.
+ */
+@Composable
+private fun ImmersiveSystemBars(immersive: Boolean) {
+    val view = LocalView.current
+    if (view.isInEditMode) return
+    val window = (view.context as Activity).window
+
+    DisposableEffect(immersive) {
+        val controller = WindowCompat.getInsetsController(window, view)
+        if (immersive) {
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose { controller.show(WindowInsetsCompat.Type.systemBars()) }
     }
 }
 
