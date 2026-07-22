@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -36,7 +38,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -130,16 +135,14 @@ fun HomeScreen(
                             },
                             trailingContent = {
                                 Row {
-                                    IconButton(onClick = { onOpenSftp(profile) }) {
-                                        Icon(Icons.Default.Folder, contentDescription = "SFTP")
+                                    LabelledAction(Icons.Default.Folder, "SFTP") {
+                                        onOpenSftp(profile)
                                     }
-                                    IconButton(onClick = {
+                                    LabelledAction(Icons.Default.Edit, "Edit") {
                                         editingProfile = profile; showProfileDialog = true
-                                    }) {
-                                        Icon(Icons.Default.Edit, contentDescription = "Edit")
                                     }
-                                    IconButton(onClick = { deletingProfile = profile }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete")
+                                    LabelledAction(Icons.Default.Delete, "Delete") {
+                                        deletingProfile = profile
                                     }
                                 }
                             },
@@ -178,11 +181,11 @@ fun HomeScreen(
                             headlineContent = { Text(peer.label) },
                             trailingContent = {
                                 Row {
-                                    IconButton(onClick = { editingPeer = peer; showPeerDialog = true }) {
-                                        Icon(Icons.Default.Edit, contentDescription = "Edit")
+                                    LabelledAction(Icons.Default.Edit, "Edit") {
+                                        editingPeer = peer; showPeerDialog = true
                                     }
-                                    IconButton(onClick = { deletingPeer = peer }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete")
+                                    LabelledAction(Icons.Default.Delete, "Delete") {
+                                        deletingPeer = peer
                                     }
                                 }
                             },
@@ -224,6 +227,28 @@ fun HomeScreen(
         ConfirmDialog(peer.label, { deletingPeer = null }) {
             vm.deletePeer(peer); deletingPeer = null
         }
+    }
+}
+
+/**
+ * A row action with its name underneath. The icons alone were guesswork —
+ * a folder for SFTP in particular reads as "browse files" only once you know.
+ */
+@Composable
+private fun LabelledAction(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
+        Icon(icon, contentDescription = label, modifier = Modifier.size(22.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
