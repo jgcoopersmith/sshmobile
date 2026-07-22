@@ -1,6 +1,8 @@
 package com.j0ker.sshmobile.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -10,7 +12,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -39,6 +43,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -48,6 +53,9 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.j0ker.sshmobile.ssh.SshState
+
+/** Trimmed from Material's 48dp default to give the terminal back some height. */
+private val TAB_ROW_HEIGHT = 40.dp
 
 /** Control chords a soft keyboard cannot produce; the desktop had real keys. */
 private val ESC = Char(27).toString()
@@ -73,17 +81,23 @@ private val CONTROL_KEYS = listOf(
 @Composable
 fun SessionScreen(vm: SessionViewModel, onBack: () -> Unit) {
     val active = vm.activeTab
+    // Landscape on a phone has so little height that a 64dp app bar on top of
+    // the tab strip costs a third of the terminal. There, the back control moves
+    // inline with the tabs and the app bar goes away; system back still works.
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(active?.title ?: "Sessions", maxLines = 1) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
+            if (!landscape) {
+                TopAppBar(
+                    title = { Text(active?.title ?: "Sessions", maxLines = 1) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                )
+            }
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().imePadding()) {
@@ -95,20 +109,40 @@ fun SessionScreen(vm: SessionViewModel, onBack: () -> Unit) {
             }
 
             val selectedIndex = vm.tabs.indexOfFirst { it.id == vm.activeTabId }.coerceAtLeast(0)
-            ScrollableTabRow(selectedTabIndex = selectedIndex, edgePadding = 0.dp) {
-                vm.tabs.forEach { tab ->
-                    Tab(
-                        selected = tab.id == vm.activeTabId,
-                        onClick = { vm.activeTabId = tab.id },
-                        text = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(tab.title, maxLines = 1)
-                                IconButton(onClick = { vm.closeTab(tab) }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Close ${tab.title}")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (landscape) {
+                    IconButton(onClick = onBack, modifier = Modifier.size(TAB_ROW_HEIGHT)) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+                ScrollableTabRow(
+                    selectedTabIndex = selectedIndex,
+                    edgePadding = 0.dp,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    vm.tabs.forEach { tab ->
+                        Tab(
+                            selected = tab.id == vm.activeTabId,
+                            onClick = { vm.activeTabId = tab.id },
+                            modifier = Modifier.height(TAB_ROW_HEIGHT),
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(tab.title, maxLines = 1)
+                                    // A plain Icon, not an IconButton: the latter
+                                    // enforces a 48dp touch target that dominates
+                                    // the strip's height.
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Close ${tab.title}",
+                                        modifier = Modifier
+                                            .padding(start = 8.dp)
+                                            .size(18.dp)
+                                            .clickable { vm.closeTab(tab) },
+                                    )
                                 }
-                            }
-                        },
-                    )
+                            },
+                        )
+                    }
                 }
             }
 
