@@ -1,0 +1,28 @@
+#!/bin/sh
+# Bumps versionName's last component and versionCode in app/build.gradle.kts on
+# every commit, so each commit ships a unique, increasing version (shown at the
+# bottom of Settings). versionCode moves too, because Android refuses to install
+# an update whose code hasn't increased.
+# Enabled via: git config core.hooksPath .githooks
+cd "$(git rev-parse --show-toplevel)" || exit 0
+
+gradle=app/build.gradle.kts
+[ -f "$gradle" ] || exit 0
+
+ver=$(sed -n 's/.*versionName = "\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/p' "$gradle")
+[ -z "$ver" ] && exit 0
+
+major=${ver%%.*}
+rest=${ver#*.}
+minor=${rest%%.*}
+patch=${rest#*.}
+new="$major.$minor.$((patch + 1))"
+
+code=$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' "$gradle")
+[ -z "$code" ] && exit 0
+newcode=$((code + 1))
+
+sed -i "s|versionName = \"$ver\"|versionName = \"$new\"|" "$gradle"
+sed -i "s|versionCode = $code$|versionCode = $newcode|" "$gradle"
+git add "$gradle"
+echo "pre-commit: version $ver -> $new (code $code -> $newcode)"

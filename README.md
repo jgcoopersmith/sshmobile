@@ -68,6 +68,20 @@ Unit tests (ANSI stripper, host key prompt bridge, SFTP path and size helpers):
 ./gradlew testDebugUnitTest
 ```
 
+### Version numbering
+
+`.githooks/pre-commit` bumps the last component of `versionName` and increments
+`versionCode` in `app/build.gradle.kts` on every commit, so each commit ships a
+unique, increasing version — shown at the bottom of Settings. Never bump them by
+hand. Enable the hook once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`versionCode` moves alongside `versionName` because Android refuses to install
+an update whose code has not increased.
+
 ### Release builds
 
 `assembleRelease` signs the APK when it can find a key, and produces an unsigned
