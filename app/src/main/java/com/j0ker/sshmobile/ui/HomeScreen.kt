@@ -245,28 +245,6 @@ fun HomeScreen(
     }
 }
 
-/**
- * A row action with its name underneath. The icons alone were guesswork —
- * a folder for SFTP in particular reads as "browse files" only once you know.
- */
-@Composable
-private fun LabelledAction(icon: ImageVector, label: String, onClick: () -> Unit) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-    ) {
-        Icon(icon, contentDescription = label, modifier = Modifier.size(22.dp))
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
 @Composable
 private fun EmptyHint(text: String) {
     Text(

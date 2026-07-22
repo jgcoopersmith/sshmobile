@@ -126,5 +126,8 @@ The signed release build runs on a Galaxy S24+ (Android 15) and **connects to a
 real SSH server** — handshake, host key confirmation and interactive shell all
 work.
 
-Still unexercised: SFTP transfers, peer chat against another instance, and key
-authentication (only password auth has been used).
+Peer chat has been exercised against the desktop client: an inbound connection
+opens its window and messages arrive. SFTP connects and lists directories.
+
+Still unexercised: SFTP uploads, downloads and deletes; outbound chat messages;
+and key authentication (only password auth has been used).

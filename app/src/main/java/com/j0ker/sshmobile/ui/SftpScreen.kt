@@ -138,14 +138,12 @@ fun SftpScreen(profile: ConnectionProfile, onBack: () -> Unit) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { refresh(SftpSession.parentOf(path)) }) {
-                        Icon(Icons.Default.ArrowUpward, contentDescription = "Up")
+                    LabelledAction(Icons.Default.ArrowUpward, "Up") {
+                        refresh(SftpSession.parentOf(path))
                     }
-                    IconButton(onClick = { refresh() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                    }
-                    IconButton(onClick = { pickUpload.launch(arrayOf("*/*")) }) {
-                        Icon(Icons.Default.Upload, contentDescription = "Upload")
+                    LabelledAction(Icons.Default.Refresh, "Refresh") { refresh() }
+                    LabelledAction(Icons.Default.Upload, "Upload") {
+                        pickUpload.launch(arrayOf("*/*"))
                     }
                 },
             )
