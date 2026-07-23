@@ -126,8 +126,9 @@ The signed release build runs on a Galaxy S24+ (Android 15) and **connects to a
 real SSH server** — handshake, host key confirmation and interactive shell all
 work.
 
-Peer chat has been exercised against the desktop client: an inbound connection
-opens its window and messages arrive. SFTP connects and lists directories.
+Exercised against a real server (Ubuntu 24.04 over the LAN) and the desktop
+client: interactive shell, host key confirmation, SFTP directory listing and
+file transfer in both directions, and inbound peer chat.
 
-Still unexercised: SFTP uploads, downloads and deletes; outbound chat messages;
-and key authentication (only password auth has been used).
+Still unexercised: SFTP deletes, outbound chat messages, and key authentication
+(only password auth has been used).
